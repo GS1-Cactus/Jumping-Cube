@@ -5,11 +5,18 @@ public class GroundController : MonoBehaviour
     // プレイヤーが乗っていたかどうかのフラグ
     private bool playerWasOnThis = false;
 
+
     // プレイヤーが接触してからの経過時間
     private float contactTime = 0f;
 
+
+    // この床が正解床かどうか
+    public bool isCorrect = false;
+
+
     // 削除までの滞在時間（Inspectorで調整可能にしてもOK）
     [SerializeField] private float destroyAfterSeconds = 0.5f;
+
 
     void Update()
     {
@@ -41,6 +48,32 @@ public class GroundController : MonoBehaviour
         if (playerWasOnThis && collision.gameObject.CompareTag("Player"))
         {
             Destroy(gameObject);
+        }
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        // プレイヤーがこの床に着地した瞬間
+        if (collision.gameObject.CompareTag("Player") && isCorrect)
+        {
+            // この床が正解床なら、もう片方の床（不正解床）を探して削除する
+
+            // "Ground" タグが付いている全床を取得
+            GameObject[] allFloors = GameObject.FindGameObjectsWithTag("Ground");
+
+            foreach (GameObject floor in allFloors)
+            {
+                // 自分自身は除外
+                if (floor == gameObject) continue;
+
+                // 相手床のスクリプトから「isCorrect = false(不正解床)」か確認
+                GroundController other = floor.GetComponent<GroundController>();
+                if (other != null && !other.isCorrect)
+                {
+                    Destroy(floor);  // 不正解床を削除
+                    break;           // 1枚だけ削除して終了
+                }
+            }
         }
     }
 }

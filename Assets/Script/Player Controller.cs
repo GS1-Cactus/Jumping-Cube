@@ -14,18 +14,49 @@ public class PlayerJumpToPlatform : MonoBehaviour
     [SerializeField] private float fallThreshold = 10f;      // 落下判定用の最大高度からの差分
     [SerializeField] private string resultSceneName = "Result Scene"; // 落下時に切り替えるシーン名
 
+
+    private bool isTouchingGround = false;                     // プレイヤーが床に触れているかどうか
+    private float groundlessTime = 0f;                         // 床に触れていない時間を記録
+    [SerializeField] private float fallDetectionDelay = 0.1f;  // 何秒間接地してないと「落下」とみなすか
+
+
+    // 色変更時に選ばれる候補色
+    [SerializeField] public Color[] possibleColors = new Color[]
+    {
+        Color.white,
+        Color.red,
+        Color.blue,
+        Color.yellow,
+        Color.green,
+        new Color(1f, 0.5f, 0.75f), // ピンク
+        new Color(0.5f, 0f, 1f)     // 紫（パープル）
+    };
+
+
+
+    private bool isFalling = false;    // 落下中フラグ
     private bool isJumping = false;    // ジャンプ中フラグ（多重ジャンプ防止）
     private float maxY;                // プレイヤーが到達した最高Y座標
 
-    void Start()
+    void Awake()
     {
+        // プレイヤーにランダムな色を設定（スタート時）
+        Renderer renderer = GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            Color randomColor = GetRandomColor();
+            renderer.material.color = randomColor;
+        }
+
         // ゲーム開始時のY位置を初期最高地点として記録
         maxY = transform.position.y;
     }
 
     void Update()
     {
-        if (isJumping) return; // ジャンプ中は入力受付を無効化
+        if (isJumping) return; // ジャンプ中ならジャンプ操作を受け付けない
+
+        /*if (isFalling) return; // 落下中ならジャンプ操作を受け付けない*/
 
         // 左ジャンプ：Aキー入力
         if (Input.GetKeyDown(KeyCode.A))
@@ -54,6 +85,20 @@ public class PlayerJumpToPlatform : MonoBehaviour
         // プレイヤーのY位置を取得して落下判定処理
         float currentY = transform.position.y;
 
+        /*if (!isTouchingGround)
+        {
+            groundlessTime += Time.deltaTime; // 非接地時間を加算していく
+
+            if (groundlessTime >= fallDetectionDelay)
+            {
+                isFalling = true; // 一定時間離れていたら「落下中」とみなす
+            }
+        }
+        else
+        {
+            groundlessTime = 0f; // 接地しているなら時間リセット
+        }*/
+
         // プレイヤーが最高高度を更新した場合は記録しなおす
         if (currentY > maxY)
         {
@@ -65,6 +110,74 @@ public class PlayerJumpToPlatform : MonoBehaviour
         {
             SceneManager.LoadScene(resultSceneName); // リザルトシーンへ切り替え
         }
+    }
+
+    /*void OnCollisionExit(Collision collision)
+    {
+        if (collision.gameObject.CompareTag(groundTag))
+        {
+            isTouchingGround = false; // ▶ プレイヤーが床から離れた！
+        }
+    }*/
+
+    /// <summary>
+    /// タグ "Ground" の床に触れたら、色をランダムに変更する処理
+    /// </summary>
+    void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag(groundTag))
+        {
+            // ▶ 着地前のプレイヤー色を保存しておく
+            Color playerColor = GetComponent<Renderer>().material.color;
+
+            // ▶ 判定＆床生成には previousColor を使う
+            Color groundColor = collision.gameObject.GetComponent<Renderer>().material.color;
+
+            Color newColor = GetRandomColor();
+
+            if (groundColor == playerColor)
+            {
+                /*isTouchingGround = true;    // 床に触れたので接地フラグON
+
+                isFalling = false;          // 落下中フラグを解除
+
+                groundlessTime = 0f;        // 離れてた時間をリセット*/
+
+                // ✅ 正解床：色が一致している
+                Debug.Log("✅ 正解床に着地 → 新しい床を生成");
+
+                // 床生成＆リセット処理
+                Color currentColor = GetComponent<Renderer>().material.color; // 着地時点のプレイヤー色を取得
+
+                FloorSpawnController spawner = FindObjectOfType<FloorSpawnController>();
+                if (spawner != null)
+                {
+                    spawner.SpawnNewPlatform(newColor); // ✅ 色を渡して床生成
+                    spawner.ResetLandingFlag();
+                }
+            }
+            else
+            {
+                // ❌ 不正解床：色が違う
+                Debug.Log("不正解床に着地 → 床を消去して落下");
+
+                // 床を即破壊
+                Destroy(collision.gameObject);
+            }
+
+            // 判定後にプレイヤーの色をランダムで変更
+
+            GetComponent<Renderer>().material.color = newColor;
+
+            // 今は判定後に色を変えているが、床の生成はプレイヤーが着地した瞬間に
+            // 行われるので、着地して変更された色を同じ色の床ではなく、
+            // 着地した瞬間の判定されている色の床が正解床として生成されている
+        }
+    }
+
+    public Color GetRandomColor()
+    {
+        return possibleColors[Random.Range(0, possibleColors.Length)];
     }
 
     /// <summary>
@@ -96,6 +209,7 @@ public class PlayerJumpToPlatform : MonoBehaviour
 
         return nearest;
     }
+    
 
     /// <summary>
     /// ジャンプ処理（演出付きで指定座標へ移動）＋床生成＆スコア加算
@@ -125,14 +239,6 @@ public class PlayerJumpToPlatform : MonoBehaviour
 
         // 最終座標にぴったり合わせる
         transform.position = end;
-
-        // 床生成処理
-        FloorSpawnController spawner = FindObjectOfType<FloorSpawnController>();
-        if (spawner != null)
-        {
-            spawner.SpawnNewPlatform();
-            spawner.ResetLandingFlag();
-        }
 
         // スコア加算処理
         ScoreController scoreSystem = FindObjectOfType<ScoreController>();
